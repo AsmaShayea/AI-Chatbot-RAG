@@ -9,17 +9,26 @@ from app.database import db
 from datetime import datetime
 import os
 import re
-
 # Suppress warnings
 import warnings
 warnings.filterwarnings('ignore')
+
+os.environ["USER_AGENT"] = "ChatbotRag/1.0"
 
 # Environment and configurations
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("Missing OPENAI_API_KEY in environment variables!")
 
-llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
+llm = None
+
+def get_llm():
+    global llm
+    if llm is None:
+        llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
+    return llm
+
+# llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
 VECTORSTORE_DIR = "./chroma_db"
 
 # Initialize the embedding model once globally
@@ -102,8 +111,12 @@ def create_vectorstore(chatbot_id, urls):
         return None, str(e)
 
 
-## Retriever
+vectordb_cache = {}
+
 def retriever(chatbot_id):
+    if chatbot_id in vectordb_cache:
+        return vectordb_cache[chatbot_id]
+
     vectorstore_path = os.path.join(VECTORSTORE_DIR, f"chatbot_{chatbot_id}")
 
     try:
@@ -112,14 +125,18 @@ def retriever(chatbot_id):
             persist_directory=vectorstore_path,
             embedding_function=embedding_model
         )
-        return vectordb.as_retriever()
+        vectordb_cache[chatbot_id] = vectordb.as_retriever()
+        return vectordb_cache[chatbot_id]
     except Exception as e:
         print(f"Error creating retriever: {str(e)}")
         return None
 
 
+
 ## QA Chain
 def get_chatbot_response(chatbot_id, question):
+
+    llm = get_llm()
     chatbot_data = db.chatbots.find_one({"chatbot_id": chatbot_id})
     if not chatbot_data:
         return jsonify({"error": "Chatbot not found."}), 404

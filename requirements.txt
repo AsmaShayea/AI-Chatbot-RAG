@@ -8,7 +8,6 @@ pypdf
 langchain-huggingface
 beautifulsoup4 
 lxml
-llama-cpp-python
 langchain
 langchain_community
 chromadb

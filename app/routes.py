@@ -18,7 +18,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 ### ✅ **1. Home Route**
 @api_bp.route("/", methods=["GET"])
 def home():
-    return jsonify({"message": "Welcome to Flask Chatbot SaaS"}), 200
+    return jsonify({"message": "Welcome to Flask Chatbot"}), 200
 
 
 ### ✅ **2. Create Chatbot (Upload Documents)**
