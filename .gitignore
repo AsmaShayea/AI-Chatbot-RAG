@@ -1,0 +1,54 @@
+# Python specific
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+myenv/
+bin/
+build/
+dist/
+
+# VSCode and IDE files
+.vscode/
+.idea/
+
+# Environment files
+.env
+
+# OS Specific
+.DS_Store
+
+# Heroku
+*.log
+*.sqlite3
+
+# ChromaDB
+chroma_db/
+uploads/
+# Python compiled files
+*.so
+*.egg
+*.egg-info
+
+# Cache files
+*.cache
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+
+# Logs and temporary files
+*.log
+tmp/
+*.temp
+
+# Gunicorn PID file
+gunicorn.pid
+
+# Docker
+*.pid
+*.sock
