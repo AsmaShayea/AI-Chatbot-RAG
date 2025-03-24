@@ -1,0 +1,14 @@
+Flask
+Flask-Cors
+Flask-JWT-Extended
+Flask-PyMongo
+gunicorn
+langchain-openai
+pypdf
+langchain-huggingface
+beautifulsoup4 
+lxml
+llama-cpp-python
+langchain
+langchain_community
+chromadb
