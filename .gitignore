@@ -16,7 +16,7 @@ dist/
 .idea/
 
 # Environment files
-.env
+# .env
 
 # OS Specific
 .DS_Store
@@ -28,6 +28,7 @@ dist/
 # ChromaDB
 chroma_db/
 uploads/
+# app/database.py
 # Python compiled files
 *.so
 *.egg
