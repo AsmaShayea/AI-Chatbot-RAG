@@ -52,3 +52,4 @@ gunicorn.pid
 # Docker
 *.pid
 *.sock
+.env
