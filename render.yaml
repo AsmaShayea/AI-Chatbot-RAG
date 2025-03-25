@@ -5,7 +5,3 @@ services:
     plan: free
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn -b 0.0.0.0:8000 run:app"
-    envVars:
-      - key: OPENAI_API_KEY
-        value: REMOVED
-
