@@ -13,7 +13,6 @@ import re
 import warnings
 warnings.filterwarnings('ignore')
 
-os.environ["USER_AGENT"] = "ChatbotRag/1.0"
 
 # Environment and configurations
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -173,11 +172,11 @@ def get_chatbot_response(chatbot_id, question):
 
         response = qa({"query": history_aware_input})
 
-        answer = "No information available"
+        answer = "Sorry, I couldn't find relevant information in the provided documents."
         # Ensure the response contains a valid answer
         if not response['result'] or "I don't know" in response['result']:
             print("No response from QA chain.")
-            answer = "No information available"
+            answer = "Sorry, I couldn't find relevant information in the provided documents."
         else:
             print(f"result: {response['result']}")
             answer = response['result']

@@ -1,3 +1,4 @@
+from config import MONGO_URI
 from pymongo import MongoClient
 from flask_pymongo import PyMongo
 from pymongo.server_api import ServerApi
