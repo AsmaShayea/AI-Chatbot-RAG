@@ -28,7 +28,7 @@ dist/
 # ChromaDB
 chroma_db/
 uploads/
-app/database.py
+
 # Python compiled files
 *.so
 *.egg
