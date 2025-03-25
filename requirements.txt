@@ -11,3 +11,4 @@ lxml
 langchain
 langchain_community
 chromadb
+dotenv
