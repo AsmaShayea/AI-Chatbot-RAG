@@ -4,6 +4,7 @@ from flask import Blueprint, request, jsonify
 from app.database import db, get_database
 from app.chatbot import create_vectorstore, get_chatbot_response
 from werkzeug.utils import secure_filename
+from flask import request
 
 # Initialize database connection
 db = get_database()
@@ -66,18 +67,25 @@ def chat(chatbot_id):
     print(f"Received chatbot_id: {chatbot_id}")
     data = request.json
     user_question = data.get("question")
+    model_name = data.get("model_name")
 
     if not user_question:
         return jsonify({"error": "Missing 'question' field"}), 400
 
-    return get_chatbot_response(chatbot_id, user_question)
+    return get_chatbot_response(chatbot_id, user_question, model_name)
+
 
 
 @api_bp.route('/chat/<chatbot_id>/history', methods=['GET'])
 def get_chat_history(chatbot_id):
+    model_name = request.args.get("model_name")
+    if not model_name:
+        return jsonify({"error": "Missing model_name"}), 400
     chatbot_data = db.chatbots.find_one({"chatbot_id": chatbot_id})
     if not chatbot_data:
         return jsonify({"error": "Chatbot not found."}), 404
 
-    chat_history = chatbot_data.get("chat_history", [])
+    model_history_title = model_name + "_chat_history"
+    chat_history = chatbot_data.get(model_history_title, [])
     return jsonify(chat_history), 200
+

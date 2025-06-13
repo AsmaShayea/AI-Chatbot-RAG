@@ -12,3 +12,6 @@ langchain
 langchain_community
 chromadb
 dotenv
+sentence_transformers
+langchain_google_genai
+langchain_anthropic

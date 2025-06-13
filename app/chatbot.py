@@ -1,96 +1,174 @@
+import os
+import re
+from datetime import datetime
+from flask import jsonify
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, WebBaseLoader, CSVLoader
 from langchain.chains import RetrievalQA
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
-from flask import jsonify
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_anthropic import ChatAnthropic
+from langchain_huggingface import ChatHuggingFace
+from langchain.prompts import ChatPromptTemplate
 from app.database import db
-from datetime import datetime
-import os
-import re
-# Suppress warnings
 import warnings
-warnings.filterwarnings('ignore')
 
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
 # Environment and configurations
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 if not OPENAI_API_KEY:
     raise ValueError("Missing OPENAI_API_KEY in environment variables!")
 
-llm = None
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    raise ValueError("Missing DEEPSEEK_API_KEY in environment variables!")
 
-def get_llm():
-    global llm
-    if llm is None:
-        llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
-    return llm
-
-# llm = ChatOpenAI(model="gpt-4o-mini", api_key=OPENAI_API_KEY)
 VECTORSTORE_DIR = "./chroma_db"
 
-# Initialize the embedding model once globally
+# Model configuration
+MODEL_MAP = {
+    "DeepSeek": {
+        "provider": "openai",
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "api_key_env": "DEEPSEEK_API_KEY"
+    },
+    "Llama": {
+        "provider": "huggingface",
+        "model": "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    },
+    "GPT": {
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "api_key_env": "OPENAI_API_KEY"
+    },
+    "Gemini": {
+        "provider": "google",
+        "model": "gemini-2.0-flash",
+        "api_key_env": "GOOGLE_API_KEY"
+    }
+}
+
+LLM_INSTANCES = {}
+
+# Initialize the embedding model globally
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
+# System prompt
+SYSTEM_PROMPT = """
+You are a helpful AI assistant.
 
-## Document Loader
+Your job is to answer user questions using only information from the uploaded documents or provided website(s).
+
+**Rules:**
+- Use just one language which is the same language as the user's question.
+- Be extremely concise—respond very short and briefly unless more detail is necessary.
+- Keep it short as much as possible.
+- Do NOT say "in your file/website" or give generic statements. Always mention specifically what the file(s) or website are about, giving a very short overview if the user greets you or asks what you do.
+- **Never mention the source or say phrases like “from the website,” “from the file,” ”Reiterated from” or similar. Just answer directly.**
+
+**If the user's question is a greeting or a general inquiry (such as 'who are you?' or 'what do you know?'):**
+1. Briefly introduce yourself by stating you are an assistant for answering questions about [insert a **short summary or title of the uploaded files or website(s)**]. Example: "I'm your assistant for answering questions about [short overview here]."
+2. Briefly say what kind of information you can provide, based on the specific content of the uploaded files or website(s).
+
+**For all other questions:**
+- ONLY answer if the information exists in the documents or website(s). Always provide a short, clear answer.
+- If you cannot find an answer, reply: "Sorry, I couldn't find relevant information in the provided materials."
+"""
+
+# Helper functions
+def get_llm(model_name):
+    config = MODEL_MAP.get(model_name)
+    if not config:
+        raise ValueError(f"Unknown model: {model_name}")
+
+    if model_name in LLM_INSTANCES:
+        return LLM_INSTANCES[model_name]
+
+    provider = config["provider"]
+
+    if provider in ["openai", "deepseek"]:
+        api_key = os.getenv(config.get("api_key_env"))
+        if not api_key:
+            raise ValueError(f"Missing {config.get('api_key_env')} in env!")
+        llm = ChatOpenAI(
+            model=config["model"],
+            api_key=api_key,
+            base_url=config.get("base_url", None)
+        )
+    elif provider == "huggingface":
+        hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
+        if not hf_token:
+            raise ValueError("Missing HUGGINGFACE_HUB_TOKEN in environment!")
+        llm = ChatHuggingFace(
+            repo_id=config["model"],
+            huggingfacehub_api_token=hf_token
+        )
+    elif provider == "anthropic":
+        api_key = os.getenv(config.get("api_key_env", "ANTHROPIC_API_KEY"))
+        if not api_key:
+            raise ValueError("Missing ANTHROPIC_API_KEY in env!")
+        llm = ChatAnthropic(
+            model=config["model"],
+            api_key=api_key
+        )
+    elif provider == "google":
+        api_key = os.getenv(config.get("api_key_env", "GOOGLE_API_KEY"))
+        if not api_key:
+            raise ValueError("Missing GOOGLE_API_KEY in env!")
+        llm = ChatGoogleGenerativeAI(
+            model=config["model"],
+            api_key=api_key
+        )
+    else:
+        raise ValueError(f"Provider '{provider}' not implemented.")
+
+    LLM_INSTANCES[model_name] = llm
+    return llm
+
 def load_documents(urls: list = None):
-    """Load documents from a folder or URLs and return a list of Document objects."""
     documents = []
     folder_path = 'uploads'
-    # Load documents from files in the folder
     for filename in os.listdir(folder_path):
         file_path = os.path.join(folder_path, filename)
-
         try:
             if filename.endswith('.pdf'):
-                print(f"Loading PDF file: {filename}")
                 loader = PyPDFLoader(file_path)
                 loaded_docs = loader.load()
             elif filename.endswith('.docx'):
-                print(f"Loading Word file: {filename}")
                 loader = Docx2txtLoader(file_path)
                 loaded_docs = loader.load()
             elif filename.endswith('.csv'):
-                print(f"Loading CSV file: {filename}")
                 loader = CSVLoader(file_path=file_path)
                 loaded_docs = loader.load()
             else:
-                print(f"Unsupported file type: {filename}")
                 continue
-
             documents.extend(loaded_docs)
-
         except Exception as e:
             print(f"Error loading file {filename}: {str(e)}")
 
-    # Load documents from web URLs
     if urls:
         try:
-            print(f"Loading from URLs: {urls}")
             loader = WebBaseLoader(urls)
             web_docs = loader.load()
             documents.extend(web_docs)
         except Exception as e:
             print(f"Error loading URLs: {str(e)}")
 
-    print(f"Loaded {len(documents)} documents from folder and URLs.")
     return documents
 
-
-## Text Splitter
 def text_splitter(data):
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=50,
         length_function=len,
     )
-    chunks = text_splitter.split_documents(data)
-    return chunks
+    return text_splitter.split_documents(data)
 
-
-## Vector DB Creation
 def create_vectorstore(chatbot_id, urls):
     documents = load_documents(urls)
     doc_chunks = text_splitter(documents)
@@ -103,12 +181,9 @@ def create_vectorstore(chatbot_id, urls):
             embedding=embedding_model,
             persist_directory=vectorstore_path
         )
-        print(f"Vectorstore created at {vectorstore_path}")
         return vectorstore_path, None
     except Exception as e:
-        print(f"Error creating vectorstore: {str(e)}")
         return None, str(e)
-
 
 vectordb_cache = {}
 
@@ -127,23 +202,23 @@ def retriever(chatbot_id):
         vectordb_cache[chatbot_id] = vectordb.as_retriever()
         return vectordb_cache[chatbot_id]
     except Exception as e:
-        print(f"Error creating retriever: {str(e)}")
         return None
 
+def build_prompt(question, context):
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        ("user", "{context}\nUser: {question}")
+    ])
+    return prompt.format(context=context, question=question)
 
-
-## QA Chain
-def get_chatbot_response(chatbot_id, question):
-
-    llm = get_llm()
+def get_chatbot_response(chatbot_id, question, model_name):
+    llm = get_llm(model_name)
     chatbot_data = db.chatbots.find_one({"chatbot_id": chatbot_id})
     if not chatbot_data:
         return jsonify({"error": "Chatbot not found."}), 404
-    
-    # ✅ Load chat history from the database
-    chat_history = chatbot_data.get("chat_history", [])
 
-    # Construct the context from chat history (both user and AI messages)
+    model_history_title = model_name + "_chat_history"
+    chat_history = chatbot_data.get(model_history_title, [])
     context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
 
     try:
@@ -151,15 +226,19 @@ def get_chatbot_response(chatbot_id, question):
         if not retriever_obj:
             return jsonify({"error": "Retriever not found."}), 500
 
-        # Create the RetrievalQA pipeline with chat history awareness
         qa = RetrievalQA.from_chain_type(
             llm=llm,
             chain_type="stuff",
             retriever=retriever_obj,
-            return_source_documents=False
+            return_source_documents=False,
+            chain_type_kwargs={
+                "prompt": ChatPromptTemplate.from_messages([
+                    ("system", SYSTEM_PROMPT),
+                    ("user", "{context}\nUser: {question}")
+                ])
+            }
         )
 
-        # ✅ Log user message to the chat history
         user_message = {
             "role": "user",
             "content": question,
@@ -167,22 +246,12 @@ def get_chatbot_response(chatbot_id, question):
         }
         chat_history.append(user_message)
 
-        # Combine chat history with the current question
         history_aware_input = f"{context}\nUser: {question}"
-
         response = qa({"query": history_aware_input})
 
         answer = "Sorry, I couldn't find relevant information in the provided documents."
-        # Ensure the response contains a valid answer
-        if not response['result'] or "I don't know" in response['result']:
-            print("No response from QA chain.")
-            answer = "Sorry, I couldn't find relevant information in the provided documents."
-        else:
-            print(f"result: {response['result']}")
+        if response['result'] and "I don't know" not in response['result']:
             answer = response['result']
-
-        # ✅ Log bot response to the chat history
-        answer = re.sub(r'^Ai:\s+', '', answer, flags=re.IGNORECASE)
 
         bot_message = {
             "role": "ai",
@@ -191,16 +260,12 @@ def get_chatbot_response(chatbot_id, question):
         }
         chat_history.append(bot_message)
 
-        # ✅ Save updated chat history to MongoDB
         db.chatbots.update_one(
             {"chatbot_id": chatbot_id},
-            {"$set": {"chat_history": chat_history}}
+            {"$set": {model_history_title: chat_history}}
         )
 
         return answer
 
     except Exception as e:
-        print(f"Error generating response: {str(e)}")
         return jsonify({"error": f"Error generating response: {str(e)}"}), 500
-
-
