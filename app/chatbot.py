@@ -74,9 +74,8 @@ def get_llm(model_name):
             model=config["model"],
             api_key=api_key,
             base_url=config.get("base_url"),
-            temperature=0.7  
+            temperature=1.0 
         )
-
     elif provider == "huggingface":
         hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
         llm = ChatHuggingFace(
@@ -201,3 +200,42 @@ def get_chatbot_response(chatbot_id, question, model_name):
             llm=llm,
             chain_type="stuff",
             retriever=retriever_obj,
+            return_source_documents=False,
+            chain_type_kwargs={
+                "prompt": ChatPromptTemplate.from_messages([
+                    ("system", SYSTEM_PROMPT),
+                    ("user", "{context}\nUser: {question}")
+                ])
+            }
+        )
+
+        user_message = {
+            "role": "user",
+            "content": question,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        chat_history.append(user_message)
+
+        history_aware_input = f"{context}\nUser: {question}"
+        response = qa({"query": history_aware_input})
+
+        answer = "Sorry, I couldn't find relevant information in the provided documents."
+        if response['result'] and "I don't know" not in response['result']:
+            answer = response['result']
+
+        bot_message = {
+            "role": "ai",
+            "content": answer,
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        chat_history.append(bot_message)
+
+        db.chatbots.update_one(
+            {"chatbot_id": chatbot_id},
+            {"$set": {model_history_title: chat_history}}
+        )
+
+        return answer
+
+    except Exception as e:
+        return jsonify({"error": f"Error generating response: {str(e)}"}), 500
