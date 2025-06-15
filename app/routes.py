@@ -35,10 +35,12 @@ def create_chatbot():
 
     chatbot_id = str(uuid.uuid4())
 
-    # Save uploaded file (if any)
     if file:
-        filename = secure_filename(file.filename)
-        file.save(os.path.join(UPLOAD_FOLDER, filename))
+        filename = f"{chatbot_id}__{secure_filename(file.filename)}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+    else:
+        filepath = None
 
     # Log for debugging
     print(f"Bot Name: {bot_name}")
@@ -46,7 +48,9 @@ def create_chatbot():
     print(f"File: {file.filename if file else 'No file uploaded'}")
 
     # Create vectorstore with uploaded documents or URLs
-    vectorstore_path, error = create_vectorstore(chatbot_id, urls=urls)
+    # vectorstore_path, error = create_vectorstore(chatbot_id, urls=urls)
+    vectorstore_path, error = create_vectorstore(chatbot_id, urls=urls, file_path=filepath)
+
     if error:
         return jsonify({"error": error}), 400
 
