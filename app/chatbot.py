@@ -73,8 +73,10 @@ def get_llm(model_name):
         llm = ChatOpenAI(
             model=config["model"],
             api_key=api_key,
-            base_url=config.get("base_url")
+            base_url=config.get("base_url"),
+            temperature=0.7  
         )
+
     elif provider == "huggingface":
         hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
         llm = ChatHuggingFace(
