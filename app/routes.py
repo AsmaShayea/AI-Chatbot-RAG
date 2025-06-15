@@ -6,23 +6,21 @@ from app.chatbot import create_vectorstore, get_chatbot_response
 from werkzeug.utils import secure_filename
 from flask import request
 
-# Initialize database connection
 db = get_database()
 
-# Define Blueprint
 api_bp = Blueprint("api", __name__)
 
 # Uploads folder
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-### ✅ **1. Home Route**
+### **1. Home Route**
 @api_bp.route("/", methods=["GET"])
 def home():
     return jsonify({"message": "Welcome to Flask Chatbot"}), 200
 
 
-### ✅ **2. Create Chatbot (Upload Documents)**
+### **2. Create Chatbot (Upload Documents)**
 @api_bp.route("/create_chatbot", methods=["POST"])
 def create_chatbot():
     """Allows users to create a chatbot with document uploads."""
@@ -65,7 +63,7 @@ def create_chatbot():
     return jsonify({"message": "Chatbot created successfully!", "chatbot_id": chatbot_id}), 201
 
 
-### ✅ **3. Chat with Chatbot**
+### **3. Chat with Chatbot**
 @api_bp.route("/chat/<chatbot_id>", methods=["POST"])
 def chat(chatbot_id):
     print(f"Received chatbot_id: {chatbot_id}")

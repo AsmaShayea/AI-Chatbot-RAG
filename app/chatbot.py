@@ -59,7 +59,7 @@ LLM_INSTANCES = {}
 # Initialize the embedding model globally
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# System prompt
+
 SYSTEM_PROMPT = """
 You are a helpful AI assistant.
 
