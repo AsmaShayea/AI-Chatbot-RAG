@@ -248,7 +248,18 @@ def get_chatbot_response(chatbot_id, question, model_name):
         )
 
         history_aware_input = f"{context}\nUser: {question}"
-        response = qa({"query": history_aware_input})
+
+        try:
+            response = qa({"query": history_aware_input})
+        except Exception as e:
+            print("First attempt failed:", e)
+            try:
+                print("🔁 Retrying...")
+                response = qa({"query": history_aware_input})
+            except Exception as retry_e:
+                print("Retry failed:", retry_e)
+                return "DeepSeek encountered an error."
+
 
 
 
