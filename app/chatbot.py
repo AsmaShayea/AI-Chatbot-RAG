@@ -236,7 +236,7 @@ def get_chatbot_response(chatbot_id, question, model_name):
         
         qa = RetrievalQA.from_chain_type(
             llm=llm,
-            chain_type="stuff",
+            chain_type="map_reduce",  
             retriever=retriever_obj,
             return_source_documents=False,
             chain_type_kwargs={
@@ -260,9 +260,6 @@ def get_chatbot_response(chatbot_id, question, model_name):
         }
         chat_history.append(user_message)
 
-
-        history_aware_input = f"{context}\nUser: {question}"
-        response = qa({"query": history_aware_input})
 
         answer = "Sorry, I couldn't find relevant information in the provided documents."
         if response['result'] and "I don't know" not in response['result']:
