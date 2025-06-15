@@ -236,7 +236,7 @@ def get_chatbot_response(chatbot_id, question, model_name):
         
         qa = RetrievalQA.from_chain_type(
             llm=llm,
-            chain_type="map_reduce",  
+            chain_type="stuff",
             retriever=retriever_obj,
             return_source_documents=False,
             chain_type_kwargs={
