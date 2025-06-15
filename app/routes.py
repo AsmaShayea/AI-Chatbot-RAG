@@ -5,10 +5,12 @@ from app.database import db, get_database
 from app.chatbot import create_vectorstore, get_chatbot_response
 from werkzeug.utils import secure_filename
 from flask import request
+from flask_cors import CORS 
+
+api_bp = Blueprint("api", __name__)    
+CORS(api_bp, origins="*")  
 
 db = get_database()
-
-api_bp = Blueprint("api", __name__)
 
 # Uploads folder
 UPLOAD_FOLDER = "uploads"

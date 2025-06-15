@@ -1,14 +1,6 @@
-from flask import Flask
-from flask_cors import CORS
+from app import create_app
 
-def create_app():
-    app = Flask(__name__)
+app = create_app()
 
-    # ✅ Enable CORS for your frontend domain
-    CORS(app, origins=["https://asmashayea.com"])
-
-    # Register your API blueprint
-    from app.routes import api_bp
-    app.register_blueprint(api_bp)
-
-    return app
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
