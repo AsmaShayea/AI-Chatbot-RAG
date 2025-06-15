@@ -1,35 +1,27 @@
 import os
 import re
+import warnings
 from datetime import datetime
 from flask import jsonify
+from langdetect import detect
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, WebBaseLoader, CSVLoader
 from langchain.chains import RetrievalQA
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings, ChatHuggingFace
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_anthropic import ChatAnthropic
-from langchain_huggingface import ChatHuggingFace
 from langchain.prompts import ChatPromptTemplate
 from app.database import db
-import warnings
 
-# Suppress warnings
 warnings.filterwarnings('ignore')
 
-# Environment and configurations
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    raise ValueError("Missing OPENAI_API_KEY in environment variables!")
-
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-if not DEEPSEEK_API_KEY:
-    raise ValueError("Missing DEEPSEEK_API_KEY in environment variables!")
 
 VECTORSTORE_DIR = "./chroma_db"
 
-# Model configuration
 MODEL_MAP = {
     "DeepSeek": {
         "provider": "openai",
@@ -54,33 +46,18 @@ MODEL_MAP = {
 }
 
 LLM_INSTANCES = {}
-
-# Initialize the embedding model globally
 embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
-# System prompt
-SYSTEM_PROMPT = """
-You are a helpful AI assistant.
+vectordb_cache = {}
 
-Your job is to answer user questions using only information from the uploaded documents or provided website(s).
 
-**Rules:**
-- Use just one language which is the same language as the user's question.
-- Be extremely concise—respond very short and briefly unless more detail is necessary.
-- Keep it short as much as possible.
-- Do NOT say "in your file/website" or give generic statements. Always mention specifically what the file(s) or website are about, giving a very short overview if the user greets you or asks what you do.
-- **Never mention the source or say phrases like “from the website,” “from the file,” ”Reiterated from” or similar. Just answer directly.**
+def detect_language(text):
+    try:
+        return detect(text)
+    except:
+        return "en"
 
-**If the user's question is a greeting or a general inquiry (such as 'who are you?' or 'what do you know?'):**
-1. Briefly introduce yourself by stating you are an assistant for answering questions about [insert a **short summary or title of the uploaded files or website(s)**]. Example: "I'm your assistant for answering questions about [short overview here]."
-2. Briefly say what kind of information you can provide, based on the specific content of the uploaded files or website(s).
 
-**For all other questions:**
-- ONLY answer if the information exists in the documents or website(s). Always provide a short, clear answer.
-- If you cannot find an answer, reply: "Sorry, I couldn't find relevant information in the provided materials."
-"""
-
-# Helper functions
 def get_llm(model_name):
     config = MODEL_MAP.get(model_name)
     if not config:
@@ -93,33 +70,25 @@ def get_llm(model_name):
 
     if provider in ["openai", "deepseek"]:
         api_key = os.getenv(config.get("api_key_env"))
-        if not api_key:
-            raise ValueError(f"Missing {config.get('api_key_env')} in env!")
         llm = ChatOpenAI(
             model=config["model"],
             api_key=api_key,
-            base_url=config.get("base_url", None)
+            base_url=config.get("base_url")
         )
     elif provider == "huggingface":
         hf_token = os.getenv("HUGGINGFACE_HUB_TOKEN")
-        if not hf_token:
-            raise ValueError("Missing HUGGINGFACE_HUB_TOKEN in environment!")
         llm = ChatHuggingFace(
             repo_id=config["model"],
             huggingfacehub_api_token=hf_token
         )
     elif provider == "anthropic":
         api_key = os.getenv(config.get("api_key_env", "ANTHROPIC_API_KEY"))
-        if not api_key:
-            raise ValueError("Missing ANTHROPIC_API_KEY in env!")
         llm = ChatAnthropic(
             model=config["model"],
             api_key=api_key
         )
     elif provider == "google":
         api_key = os.getenv(config.get("api_key_env", "GOOGLE_API_KEY"))
-        if not api_key:
-            raise ValueError("Missing GOOGLE_API_KEY in env!")
         llm = ChatGoogleGenerativeAI(
             model=config["model"],
             api_key=api_key
@@ -130,7 +99,8 @@ def get_llm(model_name):
     LLM_INSTANCES[model_name] = llm
     return llm
 
-def load_documents(urls: list = None):
+
+def load_documents(urls=None):
     documents = []
     folder_path = 'uploads'
     for filename in os.listdir(folder_path):
@@ -161,19 +131,15 @@ def load_documents(urls: list = None):
 
     return documents
 
+
 def text_splitter(data):
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=50,
-        length_function=len,
-    )
-    return text_splitter.split_documents(data)
+    return RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50).split_documents(data)
+
 
 def create_vectorstore(chatbot_id, urls):
     documents = load_documents(urls)
     doc_chunks = text_splitter(documents)
     vectorstore_path = os.path.join(VECTORSTORE_DIR, f"chatbot_{chatbot_id}")
-
     try:
         vectorstore = Chroma.from_documents(
             collection_name=f"chatbot_{chatbot_id}",
@@ -185,14 +151,12 @@ def create_vectorstore(chatbot_id, urls):
     except Exception as e:
         return None, str(e)
 
-vectordb_cache = {}
 
 def retriever(chatbot_id):
     if chatbot_id in vectordb_cache:
         return vectordb_cache[chatbot_id]
 
     vectorstore_path = os.path.join(VECTORSTORE_DIR, f"chatbot_{chatbot_id}")
-
     try:
         vectordb = Chroma(
             collection_name=f"chatbot_{chatbot_id}",
@@ -201,15 +165,9 @@ def retriever(chatbot_id):
         )
         vectordb_cache[chatbot_id] = vectordb.as_retriever()
         return vectordb_cache[chatbot_id]
-    except Exception as e:
+    except Exception:
         return None
 
-def build_prompt(question, context):
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT),
-        ("user", "{context}\nUser: {question}")
-    ])
-    return prompt.format(context=context, question=question)
 
 def get_chatbot_response(chatbot_id, question, model_name):
     llm = get_llm(model_name)
@@ -221,6 +179,17 @@ def get_chatbot_response(chatbot_id, question, model_name):
     chat_history = chatbot_data.get(model_history_title, [])
     context = "\n".join([f"{msg['role'].capitalize()}: {msg['content']}" for msg in chat_history])
 
+    user_lang = detect_language(question)
+    lang_instruction = {
+        "en": "Answer in English only.",
+        "ar": "أجب باللغة العربية فقط."
+    }.get(user_lang, "Respond in the same language as the question.")
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", f"""# Role\nYou are a concise and helpful assistant that only uses the provided document and website content to answer questions.\n\n# Behavior Rules\n- Always reply in the same language as the question.\n- {lang_instruction}\n- Avoid generic phrases like 'in your document' or 'from the website'.\n- Answer only if you find relevant info in the sources.\n\n# Instruction\nUse only the relevant content from context to answer. Be specific, avoid repetition, and don't invent answers."""),
+        ("user", "# Context\n{context}\n\n# Question\n{question}")
+    ])
+
     try:
         retriever_obj = retriever(chatbot_id)
         if not retriever_obj:
@@ -230,42 +199,3 @@ def get_chatbot_response(chatbot_id, question, model_name):
             llm=llm,
             chain_type="stuff",
             retriever=retriever_obj,
-            return_source_documents=False,
-            chain_type_kwargs={
-                "prompt": ChatPromptTemplate.from_messages([
-                    ("system", SYSTEM_PROMPT),
-                    ("user", "{context}\nUser: {question}")
-                ])
-            }
-        )
-
-        user_message = {
-            "role": "user",
-            "content": question,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        chat_history.append(user_message)
-
-        history_aware_input = f"{context}\nUser: {question}"
-        response = qa({"query": history_aware_input})
-
-        answer = "Sorry, I couldn't find relevant information in the provided documents."
-        if response['result'] and "I don't know" not in response['result']:
-            answer = response['result']
-
-        bot_message = {
-            "role": "ai",
-            "content": answer,
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        chat_history.append(bot_message)
-
-        db.chatbots.update_one(
-            {"chatbot_id": chatbot_id},
-            {"$set": {model_history_title: chat_history}}
-        )
-
-        return answer
-
-    except Exception as e:
-        return jsonify({"error": f"Error generating response: {str(e)}"}), 500

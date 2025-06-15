@@ -15,3 +15,4 @@ dotenv
 sentence_transformers
 langchain_google_genai
 langchain_anthropic
+langdetect
