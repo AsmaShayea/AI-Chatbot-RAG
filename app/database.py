@@ -12,5 +12,4 @@ def get_database():
 
     return db
 
-
 db = get_database()
